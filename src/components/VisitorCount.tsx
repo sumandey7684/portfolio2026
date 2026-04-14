@@ -8,43 +8,122 @@ interface VisitorStats {
   uniqueVisitors: number
 }
 
+const REFRESH_INTERVAL_MS = 30_000
+const REQUEST_TIMEOUT_MS = 10_000
+
+function getOrdinalSuffix(value: number): string {
+  const absValue = Math.abs(value)
+  const lastTwo = absValue % 100
+
+  if (lastTwo >= 11 && lastTwo <= 13) {
+    return 'th'
+  }
+
+  switch (absValue % 10) {
+    case 1:
+      return 'st'
+    case 2:
+      return 'nd'
+    case 3:
+      return 'rd'
+    default:
+      return 'th'
+  }
+}
+
 export function VisitorCount({ className }: { className?: string }) {
   const [stats, setStats] = useState<VisitorStats | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    async function trackAndFetchStats() {
+    let isMounted = true
+    let isFetching = false
+    let nextPollTimer: number | null = null
+
+    const fetchWithTimeout = async (url: string, init?: RequestInit) => {
+      const controller = new AbortController()
+      const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
       try {
-        const fingerprint = getOrCreateVisitorId()
-
-        await fetch('/api/visitors', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ fingerprint }),
-          cache: 'no-store'
+        return await fetch(url, {
+          ...init,
+          cache: 'no-store',
+          signal: controller.signal,
         })
+      } finally {
+        window.clearTimeout(timeoutId)
+      }
+    }
 
-        const response = await fetch('/api/visitors', {
+    const scheduleNextPoll = () => {
+      if (!isMounted) {
+        return
+      }
+
+      nextPollTimer = window.setTimeout(() => {
+        void fetchCurrentStats()
+      }, REFRESH_INTERVAL_MS)
+    }
+
+    async function fetchCurrentStats() {
+      if (isFetching || !isMounted) {
+        return
+      }
+
+      isFetching = true
+
+      try {
+        const response = await fetchWithTimeout('/api/visitors', {
           method: 'GET',
-          cache: 'no-store'
         })
 
-        if (response.ok) {
-          const data = await response.json()
+        if (!response.ok) {
+          throw new Error(`Visitor stats API failed with status ${response.status}`)
+        }
+
+        const data = await response.json()
+        if (isMounted) {
           setStats({
-            uniqueVisitors: data.uniqueVisitors || 0
+            uniqueVisitors: data.uniqueVisitors || 0,
           })
         }
       } catch (error) {
         console.error('Failed to fetch visitor stats:', error)
       } finally {
-        setLoading(false)
+        isFetching = false
+        if (isMounted) {
+          setLoading(false)
+          scheduleNextPoll()
+        }
       }
     }
 
-    trackAndFetchStats()
+    async function trackAndStartPolling() {
+      try {
+        const fingerprint = getOrCreateVisitorId()
+
+        await fetchWithTimeout('/api/visitors', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ fingerprint }),
+        })
+      } catch (error) {
+        console.error('Failed to track visitor:', error)
+      }
+
+      await fetchCurrentStats()
+    }
+
+    void trackAndStartPolling()
+
+    return () => {
+      isMounted = false
+      if (nextPollTimer !== null) {
+        window.clearTimeout(nextPollTimer)
+      }
+    }
   }, [])
 
   if (loading) {
@@ -66,7 +145,7 @@ export function VisitorCount({ className }: { className?: string }) {
         <Eye className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
       </div>
       <span className="text-sm text-neutral-600 dark:text-neutral-400">
-        You are the <span className="font-semibold text-black dark:text-white">{stats.uniqueVisitors.toLocaleString()}<sup className="text-[10px]">th</sup></span> visitor
+        You are the <span className="font-semibold text-black dark:text-white">{stats.uniqueVisitors.toLocaleString()}<sup className="text-[10px]">{getOrdinalSuffix(stats.uniqueVisitors)}</sup></span> visitor
       </span>
     </div>
   )

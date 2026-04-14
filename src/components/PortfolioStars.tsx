@@ -5,6 +5,7 @@ import { FaGithub } from 'react-icons/fa6'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 
 const REFRESH_INTERVAL_MS = 60_000
+const REQUEST_TIMEOUT_MS = 10_000
 
 export default function PortfolioStars() {
   const [starCount, setStarCount] = useState<number | null>(null)
@@ -12,13 +13,43 @@ export default function PortfolioStars() {
 
   useEffect(() => {
     let isMounted = true
+    let isFetching = false
+    let nextPollTimer: number | null = null
+
+    const fetchWithTimeout = async (url: string) => {
+      const controller = new AbortController()
+      const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
+      try {
+        return await fetch(url, {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+      } finally {
+        window.clearTimeout(timeoutId)
+      }
+    }
+
+    const scheduleNextPoll = () => {
+      if (!isMounted) {
+        return
+      }
+
+      nextPollTimer = window.setTimeout(() => {
+        void fetchStars()
+      }, REFRESH_INTERVAL_MS)
+    }
 
     const fetchStars = async () => {
+      if (isFetching || !isMounted) {
+        return
+      }
+
+      isFetching = true
+
       try {
         // Try our API first
-        const response = await fetch('/api/github-stars?owner=sumandey7684&repo=portfolio2026', {
-          cache: 'no-store',
-        })
+        const response = await fetchWithTimeout('/api/github-stars?owner=sumandey7684&repo=portfolio2026')
         if (!response.ok) {
           throw new Error(`Stars API failed with status ${response.status}`)
         }
@@ -28,9 +59,7 @@ export default function PortfolioStars() {
           setStarCount(data.stars)
         } else {
           // Fallback: fetch directly from GitHub public API
-          const githubResponse = await fetch('https://api.github.com/repos/sumandey7684/portfolio2026', {
-            cache: 'no-store',
-          })
+          const githubResponse = await fetchWithTimeout('https://api.github.com/repos/sumandey7684/portfolio2026')
           if (!githubResponse.ok) {
             throw new Error(`GitHub API failed with status ${githubResponse.status}`)
           }
@@ -43,9 +72,7 @@ export default function PortfolioStars() {
         console.error('Failed to fetch star count:', error)
         // Try direct GitHub API as fallback
         try {
-          const githubResponse = await fetch('https://api.github.com/repos/sumandey7684/portfolio2026', {
-            cache: 'no-store',
-          })
+          const githubResponse = await fetchWithTimeout('https://api.github.com/repos/sumandey7684/portfolio2026')
           if (!githubResponse.ok) {
             throw new Error(`GitHub API failed with status ${githubResponse.status}`)
           }
@@ -59,19 +86,22 @@ export default function PortfolioStars() {
           }
         }
       } finally {
+        isFetching = false
+
         if (isMounted) {
           setLoading(false)
+          scheduleNextPoll()
         }
       }
     }
 
-    fetchStars()
-
-    const intervalId = window.setInterval(fetchStars, REFRESH_INTERVAL_MS)
+    void fetchStars()
 
     return () => {
       isMounted = false
-      window.clearInterval(intervalId)
+      if (nextPollTimer !== null) {
+        window.clearTimeout(nextPollTimer)
+      }
     }
   }, [])
 
