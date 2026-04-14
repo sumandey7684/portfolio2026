@@ -6,8 +6,8 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const owner = searchParams.get('owner') || 'Atharvsinh-codez'
-    const repo = searchParams.get('repo') || 'portfolio'
+    const owner = searchParams.get('owner') || process.env.GITHUB_REPO_OWNER || 'sumandey7684'
+    const repo = searchParams.get('repo') || process.env.GITHUB_REPO_NAME || 'portfolio2026'
 
     const stars = await fetchRepositoryStars(owner, repo)
 
@@ -26,11 +26,12 @@ export async function GET(request: NextRequest) {
         },
       }
     )
-  } catch {
+  } catch (error) {
     return NextResponse.json(
       {
         success: false,
         stars: 0,
+        error: error instanceof Error ? error.message : 'Failed to fetch repository stars',
       },
       {
         status: 500,
