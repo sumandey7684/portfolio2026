@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { FaGithub } from 'react-icons/fa6'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 
-const REFRESH_INTERVAL_MS = 60_000
+const REFRESH_INTERVAL_MS = 30_000
 const REQUEST_TIMEOUT_MS = 10_000
 
 export default function PortfolioStars() {
@@ -55,7 +55,7 @@ export default function PortfolioStars() {
         }
         const data = await response.json()
 
-        if (isMounted && data.success && data.stars >= 0) {
+        if (isMounted && data.success && typeof data.stars === 'number' && data.stars >= 0) {
           setStarCount(data.stars)
         } else {
           // Fallback: fetch directly from GitHub public API
@@ -97,11 +97,22 @@ export default function PortfolioStars() {
 
     void fetchStars()
 
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchStars()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus)
+    window.addEventListener('focus', handleVisibilityOrFocus)
+
     return () => {
       isMounted = false
       if (nextPollTimer !== null) {
         window.clearTimeout(nextPollTimer)
       }
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus)
+      window.removeEventListener('focus', handleVisibilityOrFocus)
     }
   }, [])
 

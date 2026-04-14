@@ -34,38 +34,28 @@ export async function initVisitorTable(): Promise<void> {
 }
 
 export async function trackVisit(visitorId: string): Promise<VisitorData> {
-  try {
-    const sql = getSql()
-    await initVisitorTable()
+  const sql = getSql()
+  await initVisitorTable()
 
-    // Insert visitor if not exists
-    await sql`
-      INSERT INTO visitors (visitor_id)
-      VALUES (${visitorId})
-      ON CONFLICT (visitor_id) DO NOTHING
-    `
+  // Insert visitor if not exists
+  await sql`
+    INSERT INTO visitors (visitor_id)
+    VALUES (${visitorId})
+    ON CONFLICT (visitor_id) DO NOTHING
+  `
 
-    // Get count
-    const result = await sql`SELECT COUNT(*) as count FROM visitors`
-    const uniqueCount = parseInt(result[0]?.count || '0', 10)
+  // Get count
+  const result = await sql`SELECT COUNT(*) as count FROM visitors`
+  const uniqueCount = parseInt(result[0]?.count || '0', 10)
 
-    return { uniqueVisitors: uniqueCount }
-  } catch (error) {
-    console.error('Error tracking visitor:', error)
-    return { uniqueVisitors: 0 }
-  }
+  return { uniqueVisitors: uniqueCount }
 }
 
 export async function getVisitorStats(): Promise<{ uniqueVisitors: number }> {
-  try {
-    const sql = getSql()
-    await initVisitorTable()
+  const sql = getSql()
+  await initVisitorTable()
 
-    const result = await sql`SELECT COUNT(*) as count FROM visitors`
-    const uniqueCount = parseInt(result[0]?.count || '0', 10)
-    return { uniqueVisitors: uniqueCount }
-  } catch (error) {
-    console.error('Error getting visitor stats:', error)
-    return { uniqueVisitors: 0 }
-  }
+  const result = await sql`SELECT COUNT(*) as count FROM visitors`
+  const uniqueCount = parseInt(result[0]?.count || '0', 10)
+  return { uniqueVisitors: uniqueCount }
 }

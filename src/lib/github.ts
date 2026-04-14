@@ -183,7 +183,23 @@ export async function fetchRepositoryStars(owner: string, repo: string): Promise
     
     return data.stargazers_count
   } catch {
-    return 0
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+      },
+      cache: 'no-store',
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch stars for ${owner}/${repo}: ${response.status}`)
+    }
+
+    const data = (await response.json()) as { stargazers_count?: unknown }
+    if (typeof data.stargazers_count !== 'number') {
+      throw new Error(`Invalid stargazers_count for ${owner}/${repo}`)
+    }
+
+    return data.stargazers_count
   }
 }
 

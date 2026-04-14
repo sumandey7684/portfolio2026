@@ -11,6 +11,10 @@ export async function GET(request: NextRequest) {
 
     const stars = await fetchRepositoryStars(owner, repo)
 
+    if (typeof stars !== 'number' || Number.isNaN(stars) || stars < 0) {
+      throw new Error('Invalid stars value')
+    }
+
     return NextResponse.json(
       {
         success: true,

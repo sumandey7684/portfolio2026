@@ -82,7 +82,7 @@ export function VisitorCount({ className }: { className?: string }) {
         }
 
         const data = await response.json()
-        if (isMounted) {
+        if (isMounted && data.success && typeof data.uniqueVisitors === 'number') {
           setStats({
             uniqueVisitors: data.uniqueVisitors || 0,
           })
@@ -145,7 +145,13 @@ export function VisitorCount({ className }: { className?: string }) {
         <Eye className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
       </div>
       <span className="text-sm text-neutral-600 dark:text-neutral-400">
-        You are the <span className="font-semibold text-black dark:text-white">{stats.uniqueVisitors.toLocaleString()}<sup className="text-[10px]">{getOrdinalSuffix(stats.uniqueVisitors)}</sup></span> visitor
+        {stats.uniqueVisitors > 0 ? (
+          <>
+            You are the <span className="font-semibold text-black dark:text-white">{stats.uniqueVisitors.toLocaleString()}<sup className="text-[10px]">{getOrdinalSuffix(stats.uniqueVisitors)}</sup></span> visitor
+          </>
+        ) : (
+          <span className="font-medium text-black dark:text-white">Visitor count unavailable</span>
+        )}
       </span>
     </div>
   )
