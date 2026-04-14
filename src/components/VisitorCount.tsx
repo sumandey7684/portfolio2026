@@ -98,9 +98,9 @@ export function VisitorCount({ className }: { className?: string }) {
 
         const data = await response.json()
         if (isMounted && data.success && typeof data.uniqueVisitors === 'number') {
-          setStats({
-            uniqueVisitors: data.uniqueVisitors || 0,
-          })
+          setStats((previous) => ({
+            uniqueVisitors: Math.max(previous?.uniqueVisitors ?? 0, data.uniqueVisitors || 0),
+          }))
         }
       } catch (error) {
         if (!isAbortLikeError(error)) {
@@ -119,13 +119,23 @@ export function VisitorCount({ className }: { className?: string }) {
       try {
         const fingerprint = getOrCreateVisitorId()
 
-        await fetchWithTimeout('/api/visitors', {
+        const response = await fetchWithTimeout('/api/visitors', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ fingerprint }),
         })
+
+        if (response.ok) {
+          const data = await response.json()
+          if (isMounted && data.success && typeof data.uniqueVisitors === 'number') {
+            setStats({
+              uniqueVisitors: Math.max(1, data.uniqueVisitors),
+            })
+            setLoading(false)
+          }
+        }
       } catch (error) {
         if (!isAbortLikeError(error)) {
           console.error('Failed to track visitor:', error)
