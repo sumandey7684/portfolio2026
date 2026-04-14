@@ -7,6 +7,19 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 const REFRESH_INTERVAL_MS = 30_000
 const REQUEST_TIMEOUT_MS = 10_000
 
+function isAbortLikeError(error: unknown): boolean {
+  if (error instanceof DOMException) {
+    return error.name === 'AbortError' || error.name === 'TimeoutError'
+  }
+
+  if (typeof error === 'object' && error !== null && 'name' in error) {
+    const name = (error as { name?: unknown }).name
+    return name === 'AbortError' || name === 'TimeoutError'
+  }
+
+  return false
+}
+
 export default function PortfolioStars() {
   const [starCount, setStarCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
@@ -19,7 +32,9 @@ export default function PortfolioStars() {
 
     const fetchWithTimeout = async (url: string) => {
       const controller = new AbortController()
-      const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+      const timeoutId = window.setTimeout(() => {
+        controller.abort(new DOMException('Request timed out', 'TimeoutError'))
+      }, REQUEST_TIMEOUT_MS)
 
       try {
         return await fetch(url, {
@@ -60,34 +75,17 @@ export default function PortfolioStars() {
           setStarCount(data.stars)
           setIsUnavailable(false)
         } else {
-          // Fallback: fetch directly from GitHub public API
-          const githubResponse = await fetchWithTimeout('https://api.github.com/repos/sumandey7684/portfolio2026')
-          if (!githubResponse.ok) {
-            throw new Error(`GitHub API failed with status ${githubResponse.status}`)
-          }
-          const githubData = await githubResponse.json()
-          if (isMounted && githubData.stargazers_count !== undefined) {
-            setStarCount(githubData.stargazers_count)
-            setIsUnavailable(false)
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch star count:', error)
-        // Try direct GitHub API as fallback
-        try {
-          const githubResponse = await fetchWithTimeout('https://api.github.com/repos/sumandey7684/portfolio2026')
-          if (!githubResponse.ok) {
-            throw new Error(`GitHub API failed with status ${githubResponse.status}`)
-          }
-          const githubData = await githubResponse.json()
-          if (isMounted && githubData.stargazers_count !== undefined) {
-            setStarCount(githubData.stargazers_count)
-            setIsUnavailable(false)
-          }
-        } catch {
           if (isMounted) {
             setIsUnavailable(true)
           }
+        }
+      } catch (error) {
+        if (!isAbortLikeError(error)) {
+          console.error('Failed to fetch star count:', error)
+        }
+
+        if (isMounted) {
+          setIsUnavailable(true)
         }
       } finally {
         isFetching = false

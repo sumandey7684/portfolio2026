@@ -11,6 +11,19 @@ interface VisitorStats {
 const REFRESH_INTERVAL_MS = 30_000
 const REQUEST_TIMEOUT_MS = 10_000
 
+function isAbortLikeError(error: unknown): boolean {
+  if (error instanceof DOMException) {
+    return error.name === 'AbortError' || error.name === 'TimeoutError'
+  }
+
+  if (typeof error === 'object' && error !== null && 'name' in error) {
+    const name = (error as { name?: unknown }).name
+    return name === 'AbortError' || name === 'TimeoutError'
+  }
+
+  return false
+}
+
 function getOrdinalSuffix(value: number): string {
   const absValue = Math.abs(value)
   const lastTwo = absValue % 100
@@ -42,7 +55,9 @@ export function VisitorCount({ className }: { className?: string }) {
 
     const fetchWithTimeout = async (url: string, init?: RequestInit) => {
       const controller = new AbortController()
-      const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+      const timeoutId = window.setTimeout(() => {
+        controller.abort(new DOMException('Request timed out', 'TimeoutError'))
+      }, REQUEST_TIMEOUT_MS)
 
       try {
         return await fetch(url, {
@@ -88,7 +103,9 @@ export function VisitorCount({ className }: { className?: string }) {
           })
         }
       } catch (error) {
-        console.error('Failed to fetch visitor stats:', error)
+        if (!isAbortLikeError(error)) {
+          console.error('Failed to fetch visitor stats:', error)
+        }
       } finally {
         isFetching = false
         if (isMounted) {
@@ -110,7 +127,9 @@ export function VisitorCount({ className }: { className?: string }) {
           body: JSON.stringify({ fingerprint }),
         })
       } catch (error) {
-        console.error('Failed to track visitor:', error)
+        if (!isAbortLikeError(error)) {
+          console.error('Failed to track visitor:', error)
+        }
       }
 
       await fetchCurrentStats()
