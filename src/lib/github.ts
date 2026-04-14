@@ -175,10 +175,6 @@ export async function fetchUserPullRequests(username: string, limit: number = 50
 }
 
 export async function fetchRepositoryStars(owner: string, repo: string): Promise<number> {
-  if (!token) {
-    return 0
-  }
-
   try {
     const { data } = await octokit.repos.get({
       owner,

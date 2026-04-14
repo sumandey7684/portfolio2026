@@ -4,30 +4,38 @@ import { useEffect, useState } from 'react'
 import { FaGithub } from 'react-icons/fa6'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 
+const REFRESH_INTERVAL_MS = 60_000
+
 export default function PortfolioStars() {
   const [starCount, setStarCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let isMounted = true
+
     const fetchStars = async () => {
       try {
         // Try our API first
-        const response = await fetch('/api/github-stars?owner=sumandey7684&repo=portfolio2026')
+        const response = await fetch('/api/github-stars?owner=sumandey7684&repo=portfolio2026', {
+          cache: 'no-store',
+        })
         if (!response.ok) {
           throw new Error(`Stars API failed with status ${response.status}`)
         }
         const data = await response.json()
 
-        if (data.success && data.stars > 0) {
+        if (isMounted && data.success && data.stars >= 0) {
           setStarCount(data.stars)
         } else {
           // Fallback: fetch directly from GitHub public API
-          const githubResponse = await fetch('https://api.github.com/repos/sumandey7684/portfolio2026')
+          const githubResponse = await fetch('https://api.github.com/repos/sumandey7684/portfolio2026', {
+            cache: 'no-store',
+          })
           if (!githubResponse.ok) {
             throw new Error(`GitHub API failed with status ${githubResponse.status}`)
           }
           const githubData = await githubResponse.json()
-          if (githubData.stargazers_count !== undefined) {
+          if (isMounted && githubData.stargazers_count !== undefined) {
             setStarCount(githubData.stargazers_count)
           }
         }
@@ -35,23 +43,36 @@ export default function PortfolioStars() {
         console.error('Failed to fetch star count:', error)
         // Try direct GitHub API as fallback
         try {
-          const githubResponse = await fetch('https://api.github.com/repos/sumandey7684/portfolio2026')
+          const githubResponse = await fetch('https://api.github.com/repos/sumandey7684/portfolio2026', {
+            cache: 'no-store',
+          })
           if (!githubResponse.ok) {
             throw new Error(`GitHub API failed with status ${githubResponse.status}`)
           }
           const githubData = await githubResponse.json()
-          if (githubData.stargazers_count !== undefined) {
+          if (isMounted && githubData.stargazers_count !== undefined) {
             setStarCount(githubData.stargazers_count)
           }
         } catch {
-          setStarCount(0)
+          if (isMounted) {
+            setStarCount(0)
+          }
         }
       } finally {
-        setLoading(false)
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     }
 
     fetchStars()
+
+    const intervalId = window.setInterval(fetchStars, REFRESH_INTERVAL_MS)
+
+    return () => {
+      isMounted = false
+      window.clearInterval(intervalId)
+    }
   }, [])
 
   if (loading) {
