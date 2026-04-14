@@ -22,19 +22,19 @@ const instrumentSerif = Instrument_Serif({
 })
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://www.athrix.me'),
-  title: 'Atharvsinh Jadav',
+  metadataBase: new URL('https://www.sumandey.in'),
+  title: 'Suman Dey - Software Engineer',
   description: 'I build products that solve real problems. Available for new opportunities.',
   openGraph: {
-    url: 'https://www.athrix.me/',
-    siteName: 'Atharvsinh Jadav Portfolio',
+    url: 'https://www.sumandey.in/',
+    siteName: 'Suman Dey Portfolio',
     locale: 'en_US',
     type: 'website',
     images: [{
       url: '/open-graph.png',
       width: 1200,
       height: 630,
-      alt: 'Atharvsinh Jadav - Portfolio'
+      alt: 'Suman Dey - Portfolio'
     }],
   },
 };
