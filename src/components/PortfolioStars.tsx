@@ -12,7 +12,7 @@ export default function PortfolioStars() {
     const fetchStars = async () => {
       try {
         // Try our API first
-        const response = await fetch('/api/github-stars?owner=Atharvsinh-codez&repo=sleek-portfolio')
+        const response = await fetch('/api/github-stars?owner=sumandey7684&repo=portfolio2026')
         if (!response.ok) {
           throw new Error(`Stars API failed with status ${response.status}`)
         }
@@ -22,7 +22,7 @@ export default function PortfolioStars() {
           setStarCount(data.stars)
         } else {
           // Fallback: fetch directly from GitHub public API
-          const githubResponse = await fetch('https://api.github.com/repos/Atharvsinh-codez/sleek-portfolio')
+          const githubResponse = await fetch('https://api.github.com/repos/sumandey7684/portfolio2026')
           if (!githubResponse.ok) {
             throw new Error(`GitHub API failed with status ${githubResponse.status}`)
           }
@@ -35,7 +35,7 @@ export default function PortfolioStars() {
         console.error('Failed to fetch star count:', error)
         // Try direct GitHub API as fallback
         try {
-          const githubResponse = await fetch('https://api.github.com/repos/Atharvsinh-codez/sleek-portfolio')
+          const githubResponse = await fetch('https://api.github.com/repos/sumandey7684/portfolio2026')
           if (!githubResponse.ok) {
             throw new Error(`GitHub API failed with status ${githubResponse.status}`)
           }
@@ -67,7 +67,7 @@ export default function PortfolioStars() {
     <Tooltip>
       <TooltipTrigger asChild>
         <a
-          href="https://github.com/Atharvsinh-codez/sleek-portfolio"
+          href="https://github.com/sumandey7684/portfolio2026"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 transition-colors duration-200"
