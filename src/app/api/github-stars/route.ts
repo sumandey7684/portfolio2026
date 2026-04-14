@@ -6,8 +6,8 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const owner = searchParams.get('owner') || process.env.GITHUB_REPO_OWNER || 'sumandey7684'
-    const repo = searchParams.get('repo') || process.env.GITHUB_REPO_NAME || 'portfolio2026'
+    const owner = searchParams.get('owner') || 'sumandey7684'
+    const repo = searchParams.get('repo') || 'portfolio2026'
 
     const stars = await fetchRepositoryStars(owner, repo)
 
