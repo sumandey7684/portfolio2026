@@ -8,6 +8,7 @@ export const revalidate = 0
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 30
 const requestLog = new Map<string, { count: number; windowStart: number }>()
+const fallbackVisitors = new Set<string>()
 
 function cleanupRateLimitLog(now: number): void {
   for (const [key, value] of requestLog.entries()) {
@@ -46,6 +47,15 @@ function isRateLimited(key: string): boolean {
   existing.count += 1
   requestLog.set(key, existing)
   return false
+}
+
+function fallbackTrackVisitor(visitorId: string): { uniqueVisitors: number } {
+  fallbackVisitors.add(visitorId)
+  return { uniqueVisitors: fallbackVisitors.size }
+}
+
+function fallbackGetVisitorStats(): { uniqueVisitors: number } {
+  return { uniqueVisitors: fallbackVisitors.size }
 }
 
 export async function POST(request: NextRequest) {
@@ -106,35 +116,27 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     console.error('Error tracking visitor:', error)
-    
-    try {
-      const stats = await getVisitorStats()
-      return NextResponse.json(
-        {
-          success: true,
-          ...stats,
+
+    const body = await request.json().catch(() => ({}))
+    const fingerprint = body.fingerprint as string | undefined
+    const headersList = await headers()
+    const userAgent = headersList.get('user-agent')
+    const ip = getClientIP(request)
+    const fallbackVisitorId = generateVisitorId(ip, userAgent, fingerprint)
+    const fallbackStats = fallbackTrackVisitor(fallbackVisitorId)
+
+    return NextResponse.json(
+      {
+        success: true,
+        ...fallbackStats,
+        source: 'memory-fallback',
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, max-age=0',
         },
-        {
-          headers: {
-            'Cache-Control': 'no-store, max-age=0',
-          },
-        }
-      )
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          uniqueVisitors: 0,
-          error: 'Failed to track visitor',
-        },
-        {
-          status: 500,
-          headers: {
-            'Cache-Control': 'no-store, max-age=0',
-          },
-        }
-      )
-    }
+      }
+    )
   }
 }
 
@@ -153,14 +155,15 @@ export async function GET() {
       }
     )
   } catch {
+    const fallbackStats = fallbackGetVisitorStats()
+
     return NextResponse.json(
       {
-        success: false,
-        uniqueVisitors: 0,
-        error: 'Failed to get visitor stats',
+        success: true,
+        ...fallbackStats,
+        source: 'memory-fallback',
       },
       {
-        status: 500,
         headers: {
           'Cache-Control': 'no-store, max-age=0',
         },
