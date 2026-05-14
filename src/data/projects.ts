@@ -2,6 +2,18 @@ import { Project } from '@/types/project'
 
 export const projects: Project[] = [
   {
+    id: "readmehub",
+    title: "ReadmeHub",
+    description:
+      "Fully client-side GitHub README generator with structured templates, live markdown preview, and developer-focused customization tools.",
+    longDescription:
+      "ReadmeHub is a modern GitHub README generator built for developers who want polished documentation without repetitive manual formatting. It features 15 structurally unique templates, live markdown rendering, responsive split-pane editing, GitHub profile widgets, and 90+ categorized tech badges, all running entirely in the browser with zero backend dependency.",
+    liveLink: "https://readme-hub.sumandey.in/",
+    githubLink: "https://github.com/sumandey7684/readme-hub",
+    image: "/images/readmehub.png",
+    tags: ["React", "TypeScript", "Vite", "Tailwind CSS", "Markdown"],
+  },
+  {
     id: "tale",
     title: "Tale",
     description:
