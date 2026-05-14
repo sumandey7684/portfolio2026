@@ -2,7 +2,7 @@ import { projects } from '@/data/projects'
 import ProjectsListClient from '@/components/ProjectsListClient'
 
 export const metadata = {
-  title: 'Projects | Atharvsinh Jadav',
+  title: 'Projects | Suman Dey',
   description: 'Showcase of my projects and work',
 }
 
