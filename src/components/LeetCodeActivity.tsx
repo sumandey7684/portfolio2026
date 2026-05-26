@@ -92,7 +92,7 @@ export default function LeetCodeActivity({ username = 'suman_dey' }: LeetCodeAct
       })
 
       const days: ActivityDay[] = []
-      let cursor = new Date(rangeStart)
+      const cursor = new Date(rangeStart)
       let maxCount = 0
       let totalCount = 0
 

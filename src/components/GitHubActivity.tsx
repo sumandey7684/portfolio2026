@@ -88,7 +88,7 @@ export default function GitHubActivity({ username = 'sumandey7684' }: GitHubActi
                 })
 
                 const daysInRange: ContributionDay[] = []
-                let cursor = new Date(rangeStart)
+                const cursor = new Date(rangeStart)
                 let total = 0
 
                 while (cursor <= rangeEnd) {
