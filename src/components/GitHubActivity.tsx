@@ -21,51 +21,56 @@ export default function GitHubActivity({ username = 'sumandey7684' }: GitHubActi
     const [totalContributions, setTotalContributions] = useState(0)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const [selectedYear, setSelectedYear] = useState<number | null>(null)
+
+    const currentYear = new Date().getFullYear()
 
     useEffect(() => {
         const fetchContributions = async () => {
             try {
                 setLoading(true)
 
-                // Fetch contributions for 2025 and 2026
-                const [response2025, response2026] = await Promise.all([
-                    fetch(`https://github-contributions-api.jogruber.de/v4/${username}?y=2025`),
-                    fetch(`https://github-contributions-api.jogruber.de/v4/${username}?y=2026`)
-                ])
-
-                if (!response2025.ok || !response2026.ok) {
-                    throw new Error('Failed to fetch contributions')
+                const fetchYear = async (year: number) => {
+                    const response = await fetch(`https://github-contributions-api.jogruber.de/v4/${username}?y=${year}`)
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch contributions')
+                    }
+                    const data = await response.json()
+                    if (!Array.isArray(data?.contributions)) {
+                        throw new Error('Invalid contribution payload')
+                    }
+                    return data.contributions as { date: string; count: number; level: number }[]
                 }
 
-                const data2025 = await response2025.json()
-                const data2026 = await response2026.json()
+                let allContributions: { date: string; count: number; level: number }[] = []
 
-                if (!Array.isArray(data2025?.contributions) || !Array.isArray(data2026?.contributions)) {
-                    throw new Error('Invalid contribution payload')
-                }
+                const today = new Date()
 
-                // Combine and filter: Feb 2025 to Jan 2026
-                const allContributions: { date: string; count: number; level: number }[] = []
+                if (selectedYear === null) {
+                    const [currentYearData, previousYearData] = await Promise.all([
+                        fetchYear(currentYear),
+                        fetchYear(currentYear - 1)
+                    ])
 
-                // Add 2025 contributions from February onwards
-                if (data2025.contributions) {
-                    data2025.contributions.forEach((day: { date: string; count: number; level: number }) => {
+                    const startDate = new Date(today)
+                    startDate.setDate(startDate.getDate() - 365)
+
+                    allContributions = [...previousYearData, ...currentYearData].filter((day) => {
                         const date = new Date(day.date)
-                        if (date.getMonth() >= 1) { // February = 1
-                            allContributions.push(day)
+                        return date >= startDate && date <= today
+                    })
+                } else {
+                    const yearData = await fetchYear(selectedYear)
+                    allContributions = yearData.filter((day) => {
+                        const date = new Date(day.date)
+                        if (selectedYear === currentYear) {
+                            return date <= today
                         }
+                        return date.getFullYear() === selectedYear
                     })
                 }
 
-                // Add 2026 contributions (January only, up to current date)
-                if (data2026.contributions) {
-                    data2026.contributions.forEach((day: { date: string; count: number; level: number }) => {
-                        const date = new Date(day.date)
-                        if (date.getMonth() === 0) { // January = 0
-                            allContributions.push(day)
-                        }
-                    })
-                }
+                allContributions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
                 const weeks: ContributionWeek[] = []
                 let currentWeek: ContributionDay[] = []
@@ -119,7 +124,7 @@ export default function GitHubActivity({ username = 'sumandey7684' }: GitHubActi
         }
 
         fetchContributions()
-    }, [username])
+    }, [username, selectedYear, currentYear])
 
     const getContributionColor = (level: number) => {
         const colors = {
@@ -178,12 +183,16 @@ export default function GitHubActivity({ username = 'sumandey7684' }: GitHubActi
     const monthLabels = getMonthLabels()
     const totalWeeks = contributions.length
 
+    const yearOptions = Array.from({ length: currentYear - 2015 }, (_, index) => currentYear - index)
+    const headingText = selectedYear === null ? 'Last 12 Months' : `${selectedYear}`
+
     if (loading) {
         return (
             <div className="w-full">
                 <div className="mb-4">
                     <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-1">Featured</p>
                     <h3 className="text-xl font-semibold text-black dark:text-white mb-1">GitHub Activity</h3>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">{headingText}</p>
                     <div className="h-4 w-40 bg-neutral-200 dark:bg-neutral-700 rounded animate-pulse" />
                 </div>
                 <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
@@ -210,6 +219,7 @@ export default function GitHubActivity({ username = 'sumandey7684' }: GitHubActi
                 <div className="mb-4">
                     <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-1">Featured</p>
                     <h3 className="text-xl font-semibold text-black dark:text-white mb-1">GitHub Activity</h3>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">{headingText}</p>
                 </div>
                 <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-6">
                     <p className="text-neutral-500 dark:text-neutral-400 text-center">{error}</p>
@@ -223,15 +233,34 @@ export default function GitHubActivity({ username = 'sumandey7684' }: GitHubActi
             <div className="mb-4">
                 <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-1">Featured</p>
                 <h3 className="text-xl font-semibold text-black dark:text-white mb-1">GitHub Activity</h3>
-                <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                    Total: <span className="font-semibold text-black dark:text-white">{totalContributions.toLocaleString()}</span> contributions
-                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                        {headingText} • Total:{' '}
+                        <span className="font-semibold text-black dark:text-white">{totalContributions.toLocaleString()}</span> contributions
+                    </p>
+                    <label className="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
+                        <span>View</span>
+                        <select
+                            className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm text-neutral-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+                            value={selectedYear ?? 'last12'}
+                            onChange={(event) => {
+                                const value = event.target.value
+                                setSelectedYear(value === 'last12' ? null : Number(value))
+                            }}
+                        >
+                            <option value="last12">Last 12 months</option>
+                            {yearOptions.map((year) => (
+                                <option key={year} value={year}>{year}</option>
+                            ))}
+                        </select>
+                    </label>
+                </div>
             </div>
 
             <div
                 className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6 shadow-sm"
                 role="img"
-                aria-label={`GitHub contribution graph showing ${totalContributions} contributions in the last year`}
+                aria-label={`GitHub contribution graph showing ${totalContributions} contributions for ${headingText}`}
             >
                 {/* Month labels - responsive positioning */}
                 <div className="relative mb-2">
