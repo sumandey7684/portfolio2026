@@ -20,7 +20,12 @@ function isAbortLikeError(error: unknown): boolean {
   return false
 }
 
-export default function PortfolioStars() {
+type PortfolioStarsProps = {
+  owner?: string
+  repo?: string
+}
+
+export default function PortfolioStars({ owner = 'sumandey7684', repo = 'portfolio2026' }: PortfolioStarsProps) {
   const [starCount, setStarCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [isUnavailable, setIsUnavailable] = useState(false)
@@ -29,6 +34,29 @@ export default function PortfolioStars() {
     let isMounted = true
     let isFetching = false
     let nextPollTimer: number | null = null
+    const cacheKey = `github-stars:${owner}/${repo}`
+
+    const readCachedStars = () => {
+      if (typeof window === 'undefined') {
+        return null
+      }
+
+      const cachedValue = window.localStorage.getItem(cacheKey)
+      if (!cachedValue) {
+        return null
+      }
+
+      const parsed = Number(cachedValue)
+      return Number.isNaN(parsed) ? null : parsed
+    }
+
+    const writeCachedStars = (value: number) => {
+      if (typeof window === 'undefined') {
+        return
+      }
+
+      window.localStorage.setItem(cacheKey, String(value))
+    }
 
     const fetchWithTimeout = async (url: string) => {
       const controller = new AbortController()
@@ -65,27 +93,64 @@ export default function PortfolioStars() {
 
       try {
         // Try our API first
-        const response = await fetchWithTimeout('/api/github-stars')
+        const response = await fetchWithTimeout(`/api/github-stars?owner=${owner}&repo=${repo}`)
         if (!response.ok) {
-          throw new Error(`Stars API failed with status ${response.status}`)
+          let message = `Stars API failed with status ${response.status}`
+          try {
+            const errorData = (await response.json()) as { error?: unknown }
+            if (typeof errorData.error === 'string' && errorData.error.length > 0) {
+              message = errorData.error
+            }
+          } catch {
+            // Ignore response parsing errors.
+          }
+          throw new Error(message)
         }
         const data = await response.json()
 
         if (isMounted && data.success && typeof data.stars === 'number' && data.stars >= 0) {
           setStarCount(data.stars)
           setIsUnavailable(false)
-        } else {
-          if (isMounted) {
-            setIsUnavailable(true)
-          }
+          writeCachedStars(data.stars)
+          return
         }
+
+        throw new Error(data?.error || 'Stars API returned invalid data')
       } catch (error) {
         if (!isAbortLikeError(error)) {
           console.error('Failed to fetch star count:', error)
         }
 
-        if (isMounted) {
-          setIsUnavailable(true)
+        try {
+          const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+            headers: {
+              Accept: 'application/vnd.github+json',
+            },
+            cache: 'no-store',
+          })
+
+          if (!response.ok) {
+            throw new Error(`GitHub API failed with status ${response.status}`)
+          }
+
+          const data = (await response.json()) as { stargazers_count?: unknown }
+          if (typeof data.stargazers_count !== 'number') {
+            throw new Error('GitHub API returned invalid data')
+          }
+
+          if (isMounted) {
+            setStarCount(data.stargazers_count)
+            setIsUnavailable(false)
+            writeCachedStars(data.stargazers_count)
+          }
+        } catch (fallbackError) {
+          if (!isAbortLikeError(fallbackError)) {
+            console.error('Failed to fetch star count from GitHub:', fallbackError)
+          }
+
+          if (isMounted) {
+            setIsUnavailable(true)
+          }
         }
       } finally {
         isFetching = false
@@ -95,6 +160,12 @@ export default function PortfolioStars() {
           scheduleNextPoll()
         }
       }
+    }
+
+    const cachedStars = readCachedStars()
+    if (cachedStars !== null && isMounted) {
+      setStarCount(cachedStars)
+      setLoading(false)
     }
 
     void fetchStars()
@@ -116,7 +187,7 @@ export default function PortfolioStars() {
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus)
       window.removeEventListener('focus', handleVisibilityOrFocus)
     }
-  }, [])
+  }, [owner, repo])
 
   if (loading) {
     return (
@@ -131,13 +202,13 @@ export default function PortfolioStars() {
     <Tooltip>
       <TooltipTrigger asChild>
         <a
-          href="https://github.com/sumandey7684/portfolio2026"
+          href={`https://github.com/${owner}/${repo}`}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 transition-colors duration-200"
         >
           <FaGithub className="w-4 h-4" />
-          <span className="text-sm font-medium">{isUnavailable ? '--' : starCount ?? 0}</span>
+          <span className="text-sm font-medium">{starCount ?? 0}</span>
         </a>
       </TooltipTrigger>
       <TooltipContent className="bg-neutral-900 text-white px-3 py-1.5 rounded-full text-sm font-medium">

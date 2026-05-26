@@ -42,13 +42,17 @@ export function getOrCreateVisitorId(): string {
   }
 
   const STORAGE_KEY = 'portfolio_visitor_id'
-  let visitorId = localStorage.getItem(STORAGE_KEY)
-  
-  if (!visitorId) {
-    visitorId = generateBrowserFingerprint()
-    localStorage.setItem(STORAGE_KEY, visitorId)
+  try {
+    let visitorId = localStorage.getItem(STORAGE_KEY)
+
+    if (!visitorId) {
+      visitorId = generateBrowserFingerprint()
+      localStorage.setItem(STORAGE_KEY, visitorId)
+    }
+
+    return visitorId
+  } catch {
+    return generateBrowserFingerprint()
   }
-  
-  return visitorId
 }
 

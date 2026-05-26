@@ -47,11 +47,42 @@ function getOrdinalSuffix(value: number): string {
 export function VisitorCount({ className }: { className?: string }) {
   const [stats, setStats] = useState<VisitorStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [hasError, setHasError] = useState(false)
 
   useEffect(() => {
     let isMounted = true
     let isFetching = false
     let nextPollTimer: number | null = null
+    const cacheKey = 'portfolio_visitor_count'
+
+    const readCachedCount = () => {
+      if (typeof window === 'undefined') {
+        return null
+      }
+
+      try {
+        const cachedValue = window.localStorage.getItem(cacheKey)
+        if (!cachedValue) {
+          return null
+        }
+        const parsed = Number(cachedValue)
+        return Number.isNaN(parsed) ? null : parsed
+      } catch {
+        return null
+      }
+    }
+
+    const writeCachedCount = (value: number) => {
+      if (typeof window === 'undefined') {
+        return
+      }
+
+      try {
+        window.localStorage.setItem(cacheKey, String(value))
+      } catch {
+        // Ignore cache write errors.
+      }
+    }
 
     const fetchWithTimeout = async (url: string, init?: RequestInit) => {
       const controller = new AbortController()
@@ -101,10 +132,15 @@ export function VisitorCount({ className }: { className?: string }) {
           setStats((previous) => ({
             uniqueVisitors: Math.max(previous?.uniqueVisitors ?? 0, data.uniqueVisitors || 0),
           }))
+          writeCachedCount(data.uniqueVisitors)
+          setHasError(false)
         }
       } catch (error) {
         if (!isAbortLikeError(error)) {
           console.error('Failed to fetch visitor stats:', error)
+        }
+        if (isMounted) {
+          setHasError(true)
         }
       } finally {
         isFetching = false
@@ -133,16 +169,27 @@ export function VisitorCount({ className }: { className?: string }) {
             setStats({
               uniqueVisitors: Math.max(1, data.uniqueVisitors),
             })
+            writeCachedCount(data.uniqueVisitors)
             setLoading(false)
+            setHasError(false)
           }
         }
       } catch (error) {
         if (!isAbortLikeError(error)) {
           console.error('Failed to track visitor:', error)
         }
+        if (isMounted) {
+          setHasError(true)
+        }
       }
 
       await fetchCurrentStats()
+    }
+
+    const cachedCount = readCachedCount()
+    if (cachedCount !== null && isMounted) {
+      setStats({ uniqueVisitors: cachedCount })
+      setLoading(false)
     }
 
     void trackAndStartPolling()
@@ -165,7 +212,16 @@ export function VisitorCount({ className }: { className?: string }) {
   }
 
   if (!stats) {
-    return null
+    return (
+      <div className={`inline-flex items-center gap-2.5 bg-neutral-100 dark:bg-neutral-800 rounded-full px-4 py-2.5 ${className || ''}`}>
+        <div className="w-6 h-6 bg-neutral-200 dark:bg-neutral-700 rounded flex items-center justify-center">
+          <Eye className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
+        </div>
+        <span className="text-sm text-neutral-600 dark:text-neutral-400">
+          Visitor count unavailable
+        </span>
+      </div>
+    )
   }
 
   return (
@@ -181,6 +237,7 @@ export function VisitorCount({ className }: { className?: string }) {
         ) : (
           <span className="font-medium text-black dark:text-white">Visitor count unavailable</span>
         )}
+        {hasError ? <span className="ml-2 text-xs text-neutral-400">(syncing...)</span> : null}
       </span>
     </div>
   )

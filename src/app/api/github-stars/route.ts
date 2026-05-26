@@ -9,24 +9,52 @@ export async function GET(request: NextRequest) {
     const owner = searchParams.get('owner') || 'sumandey7684'
     const repo = searchParams.get('repo') || 'portfolio2026'
 
-    const stars = await fetchRepositoryStars(owner, repo)
+    const result = await fetchRepositoryStars(owner, repo)
 
-    if (typeof stars !== 'number' || Number.isNaN(stars) || stars < 0) {
-      throw new Error('Invalid stars value')
+    if (result.ok) {
+      return NextResponse.json(
+        {
+          success: true,
+          stars: result.stars,
+          source: result.source,
+        },
+        {
+          headers: {
+            'Cache-Control': 'no-store, max-age=0',
+          },
+        }
+      )
     }
+
+    const rateLimit = result.rateLimit
+    const isRateLimited = result.status === 403 && rateLimit?.remaining === 0
+    const status = result.status === 0 ? 500 : result.status
+
+    console.error('[github-stars] upstream failure', {
+      owner,
+      repo,
+      status,
+      message: result.message,
+      rateLimit,
+    })
 
     return NextResponse.json(
       {
-        success: true,
-        stars,
+        success: false,
+        stars: 0,
+        error: isRateLimited ? 'GitHub API rate limit exceeded' : result.message,
+        status,
+        rateLimit,
       },
       {
+        status: isRateLimited ? 429 : status,
         headers: {
           'Cache-Control': 'no-store, max-age=0',
         },
       }
     )
   } catch (error) {
+    console.error('[github-stars] unhandled error', error)
     return NextResponse.json(
       {
         success: false,

@@ -17,6 +17,7 @@ import { MasonryProjectCard } from './MasonryProjectCard'
 import { faqs } from '@/data/blogs'
 import { FAQCard } from './FAQCard'
 import GitHubActivity from './GitHubActivity'
+import LeetCodeActivity from './LeetCodeActivity'
 import AboutMe from './AboutMe'
 import SpotifyPlayer from './SpotifyPlayer'
 
@@ -135,6 +136,11 @@ export default function NewHeroSection() {
                   {/* GitHub Activity Heatmap */}
                   <div className="px-4 mb-4 sm:mb-6">
                     <GitHubActivity username="sumandey7684" />
+                  </div>
+
+                  {/* LeetCode Activity Heatmap */}
+                  <div className="px-4 mb-4 sm:mb-6">
+                    <LeetCodeActivity username="suman_dey" />
                   </div>
                 </div>
               </Reveal>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { headers } from 'next/headers'
 import { trackVisit, generateVisitorId, getVisitorStats } from '@/lib/visitors'
+import { Redis } from '@upstash/redis'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -9,6 +10,22 @@ const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 30
 const requestLog = new Map<string, { count: number; windowStart: number }>()
 const fallbackVisitors = new Set<string>()
+const statsCache = {
+  value: null as { uniqueVisitors: number } | null,
+  updatedAt: 0,
+}
+const STATS_CACHE_TTL_MS = 15_000
+const SHARED_CACHE_TTL_SECONDS = 30
+const SHARED_CACHE_KEY = 'portfolio:visitors:unique'
+
+const redisUrl = process.env.UPSTASH_REDIS_REST_URL
+const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN
+const redis = redisUrl && redisToken
+  ? new Redis({
+      url: redisUrl,
+      token: redisToken,
+    })
+  : null
 
 function cleanupRateLimitLog(now: number): void {
   for (const [key, value] of requestLog.entries()) {
@@ -102,6 +119,17 @@ export async function POST(request: NextRequest) {
     
     const visitorId = generateVisitorId(ip, userAgent, fingerprint)
     const data = await trackVisit(visitorId)
+    const now = Date.now()
+    statsCache.value = { uniqueVisitors: data.uniqueVisitors }
+    statsCache.updatedAt = now
+
+    if (redis) {
+      try {
+        await redis.set(SHARED_CACHE_KEY, data.uniqueVisitors, { ex: SHARED_CACHE_TTL_SECONDS })
+      } catch (error) {
+        console.error('[visitors] redis set failed', error)
+      }
+    }
     
     return NextResponse.json(
       {
@@ -142,7 +170,57 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
+    const now = Date.now()
+    if (statsCache.value && now - statsCache.updatedAt < STATS_CACHE_TTL_MS) {
+      return NextResponse.json(
+        {
+          success: true,
+          ...statsCache.value,
+          source: 'cache',
+        },
+        {
+          headers: {
+            'Cache-Control': 'no-store, max-age=0',
+          },
+        }
+      )
+    }
+
+    if (redis) {
+      try {
+        const cached = await redis.get<number>(SHARED_CACHE_KEY)
+        if (typeof cached === 'number') {
+          statsCache.value = { uniqueVisitors: cached }
+          statsCache.updatedAt = now
+          return NextResponse.json(
+            {
+              success: true,
+              uniqueVisitors: cached,
+              source: 'redis-cache',
+            },
+            {
+              headers: {
+                'Cache-Control': 'no-store, max-age=0',
+              },
+            }
+          )
+        }
+      } catch (error) {
+        console.error('[visitors] redis get failed', error)
+      }
+    }
+
     const stats = await getVisitorStats()
+    statsCache.value = { uniqueVisitors: stats.uniqueVisitors }
+    statsCache.updatedAt = now
+
+    if (redis) {
+      try {
+        await redis.set(SHARED_CACHE_KEY, stats.uniqueVisitors, { ex: SHARED_CACHE_TTL_SECONDS })
+      } catch (error) {
+        console.error('[visitors] redis set failed', error)
+      }
+    }
     return NextResponse.json(
       {
         success: true,

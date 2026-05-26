@@ -16,12 +16,22 @@ interface GitHubActivityProps {
     username?: string
 }
 
+const BLOCK_SIZE_PX = 12
+const EXPECTED_WEEKS = 53
+
+function toDateKeyUTC(date: Date): string {
+    const year = date.getUTCFullYear()
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+    const day = String(date.getUTCDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+}
+
 export default function GitHubActivity({ username = 'sumandey7684' }: GitHubActivityProps) {
     const [contributions, setContributions] = useState<ContributionWeek[]>([])
     const [totalContributions, setTotalContributions] = useState(0)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
-    const [selectedYear, setSelectedYear] = useState<number | null>(null)
+    const [selectedYear, setSelectedYear] = useState<number | null>(() => new Date().getFullYear())
 
     const currentYear = new Date().getFullYear()
 
@@ -45,6 +55,13 @@ export default function GitHubActivity({ username = 'sumandey7684' }: GitHubActi
                 let allContributions: { date: string; count: number; level: number }[] = []
 
                 const today = new Date()
+                const todayUtc = new Date(Date.UTC(
+                    today.getUTCFullYear(),
+                    today.getUTCMonth(),
+                    today.getUTCDate()
+                ))
+                let rangeStart = new Date(todayUtc)
+                let rangeEnd = new Date(todayUtc)
 
                 if (selectedYear === null) {
                     const [currentYearData, previousYearData] = await Promise.all([
@@ -52,36 +69,50 @@ export default function GitHubActivity({ username = 'sumandey7684' }: GitHubActi
                         fetchYear(currentYear - 1)
                     ])
 
-                    const startDate = new Date(today)
-                    startDate.setDate(startDate.getDate() - 365)
-
-                    allContributions = [...previousYearData, ...currentYearData].filter((day) => {
-                        const date = new Date(day.date)
-                        return date >= startDate && date <= today
-                    })
+                    rangeStart.setUTCDate(rangeStart.getUTCDate() - 364)
+                    allContributions = [...previousYearData, ...currentYearData]
                 } else {
                     const yearData = await fetchYear(selectedYear)
-                    allContributions = yearData.filter((day) => {
-                        const date = new Date(day.date)
-                        if (selectedYear === currentYear) {
-                            return date <= today
-                        }
-                        return date.getFullYear() === selectedYear
-                    })
+                    rangeStart = new Date(Date.UTC(selectedYear, 0, 1))
+                    rangeEnd = new Date(Date.UTC(selectedYear, 11, 31))
+                    allContributions = yearData
                 }
 
-                allContributions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                const contributionsByDate = new Map<string, ContributionDay>()
+                allContributions.forEach((day) => {
+                    contributionsByDate.set(day.date, {
+                        date: day.date,
+                        count: day.count,
+                        level: day.level
+                    })
+                })
+
+                const daysInRange: ContributionDay[] = []
+                let cursor = new Date(rangeStart)
+                let total = 0
+
+                while (cursor <= rangeEnd) {
+                    const dateKey = toDateKeyUTC(cursor)
+                    const entry = contributionsByDate.get(dateKey)
+                    const count = entry?.count ?? 0
+                    const level = entry?.level ?? 0
+                    total += count
+                    daysInRange.push({
+                        date: dateKey,
+                        count,
+                        level,
+                    })
+                    cursor.setUTCDate(cursor.getUTCDate() + 1)
+                }
 
                 const weeks: ContributionWeek[] = []
                 let currentWeek: ContributionDay[] = []
-                let total = 0
                 let isFirstDay = true
 
-                allContributions.forEach((day) => {
-                    const date = new Date(day.date)
-                    const dayOfWeek = date.getDay()
+                daysInRange.forEach((day) => {
+                    const date = new Date(`${day.date}T00:00:00Z`)
+                    const dayOfWeek = date.getUTCDay()
 
-                    // For the first day, pad the week with empty days if it doesn't start on Sunday
                     if (isFirstDay && dayOfWeek !== 0) {
                         for (let i = 0; i < dayOfWeek; i++) {
                             currentWeek.push({
@@ -99,17 +130,28 @@ export default function GitHubActivity({ username = 'sumandey7684' }: GitHubActi
                         currentWeek = []
                     }
 
-                    currentWeek.push({
-                        date: day.date,
-                        count: day.count,
-                        level: day.level
-                    })
-
-                    total += day.count
+                    currentWeek.push(day)
                 })
 
                 if (currentWeek.length > 0) {
+                    while (currentWeek.length < 7) {
+                        currentWeek.push({
+                            date: '',
+                            count: 0,
+                            level: 0
+                        })
+                    }
                     weeks.push({ contributionDays: currentWeek })
+                }
+
+                while (weeks.length < EXPECTED_WEEKS) {
+                    weeks.push({
+                        contributionDays: Array.from({ length: 7 }).map(() => ({
+                            date: '',
+                            count: 0,
+                            level: 0
+                        }))
+                    })
                 }
 
                 setContributions(weeks)
@@ -159,8 +201,8 @@ export default function GitHubActivity({ username = 'sumandey7684' }: GitHubActi
             // Find a day with a valid date in this week
             const validDay = week.contributionDays.find(day => day.date !== '')
             if (validDay) {
-                const date = new Date(validDay.date)
-                const month = date.getMonth()
+                const date = new Date(`${validDay.date}T00:00:00Z`)
+                const month = date.getUTCMonth()
 
                 // Always add the first month, then check spacing for others
                 if (currentMonth === -1) {
@@ -196,13 +238,16 @@ export default function GitHubActivity({ username = 'sumandey7684' }: GitHubActi
                     <div className="h-4 w-40 bg-neutral-200 dark:bg-neutral-700 rounded animate-pulse" />
                 </div>
                 <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
-                    <div className="grid grid-cols-[repeat(53,1fr)] gap-[2px]">
+                    <div
+                        className="grid gap-[2px]"
+                        style={{ gridTemplateColumns: `repeat(${EXPECTED_WEEKS}, ${BLOCK_SIZE_PX}px)` }}
+                    >
                         {Array.from({ length: 53 }).map((_, weekIndex) => (
                             <div key={weekIndex} className="flex flex-col gap-[2px]">
                                 {Array.from({ length: 7 }).map((_, dayIndex) => (
                                     <div
                                         key={dayIndex}
-                                        className="aspect-square w-full rounded-[2px] bg-neutral-200 dark:bg-neutral-700 animate-pulse"
+                                        className="h-[12px] w-[12px] rounded-[2px] bg-neutral-200 dark:bg-neutral-700 animate-pulse"
                                     />
                                 ))}
                             </div>
@@ -266,7 +311,7 @@ export default function GitHubActivity({ username = 'sumandey7684' }: GitHubActi
                 <div className="relative mb-2">
                     <div
                         className="grid text-[10px] sm:text-xs text-neutral-500 dark:text-neutral-400"
-                        style={{ gridTemplateColumns: `repeat(${totalWeeks || 53}, 1fr)` }}
+                        style={{ gridTemplateColumns: `repeat(${totalWeeks || EXPECTED_WEEKS}, ${BLOCK_SIZE_PX}px)` }}
                     >
                         {monthLabels.map((label, index) => (
                             <div
@@ -281,29 +326,31 @@ export default function GitHubActivity({ username = 'sumandey7684' }: GitHubActi
                 </div>
 
                 {/* Contribution grid - fits container width */}
-                <div
-                    className="grid gap-[2px]"
-                    style={{ gridTemplateColumns: `repeat(${totalWeeks || 53}, 1fr)` }}
-                >
-                    {contributions.map((week, weekIndex) => (
-                        <div key={weekIndex} className="flex flex-col gap-[2px]">
-                            {week.contributionDays.map((day, dayIndex) => (
-                                <div
-                                    key={dayIndex}
-                                    className={`aspect-square w-full rounded-[2px] transition-colors ${getContributionColor(day.level)}`}
-                                    title={day.date
-                                        ? `${day.count} contributions on ${new Date(day.date).toLocaleDateString('en-US', {
-                                            weekday: 'short',
-                                            month: 'short',
-                                            day: 'numeric',
-                                            year: 'numeric'
-                                        })}`
-                                        : 'No contributions'}
-                                    aria-label={day.date ? `${day.count} contributions on ${day.date}` : 'No contributions'}
-                                />
-                            ))}
-                        </div>
-                    ))}
+                <div className="w-full overflow-x-auto">
+                    <div
+                        className="grid gap-[2px]"
+                        style={{ gridTemplateColumns: `repeat(${totalWeeks || EXPECTED_WEEKS}, ${BLOCK_SIZE_PX}px)` }}
+                    >
+                        {contributions.map((week, weekIndex) => (
+                            <div key={weekIndex} className="flex flex-col gap-[2px]">
+                                {week.contributionDays.map((day, dayIndex) => (
+                                    <div
+                                        key={dayIndex}
+                                        className={`h-[12px] w-[12px] rounded-[2px] transition-colors ${getContributionColor(day.level)}`}
+                                        title={day.date
+                                            ? `${day.count} contributions on ${new Date(`${day.date}T00:00:00Z`).toLocaleDateString('en-US', {
+                                                weekday: 'short',
+                                                month: 'short',
+                                                day: 'numeric',
+                                                year: 'numeric'
+                                            })}`
+                                            : 'No contributions'}
+                                        aria-label={day.date ? `${day.count} contributions on ${day.date}` : 'No contributions'}
+                                    />
+                                ))}
+                            </div>
+                        ))}
+                    </div>
                 </div>
 
                 {/* Legend */}

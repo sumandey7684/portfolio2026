@@ -1,10 +1,13 @@
 import { Octokit } from '@octokit/rest'
 
 const token = process.env.GITHUB_TOKEN
+const hasToken = typeof token === 'string' && token.length > 0
 
-const octokit = new Octokit({
-  auth: token,
-})
+const octokit = hasToken
+  ? new Octokit({
+      auth: token,
+    })
+  : null
 
 export interface GitHubPullRequest {
   id: number
@@ -174,33 +177,109 @@ export async function fetchUserPullRequests(username: string, limit: number = 50
   }
 }
 
-export async function fetchRepositoryStars(owner: string, repo: string): Promise<number> {
-  try {
-    const { data } = await octokit.repos.get({
-      owner,
-      repo,
-    })
-    
-    return data.stargazers_count
-  } catch {
-    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
-      headers: {
-        Accept: 'application/vnd.github+json',
-      },
-      cache: 'no-store',
-    })
+type GitHubRateLimit = {
+  limit?: number
+  remaining?: number
+  reset?: number
+}
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch stars for ${owner}/${repo}: ${response.status}`)
-    }
+type GitHubStarsResult =
+  | { ok: true; stars: number; source: 'octokit' | 'rest' }
+  | { ok: false; status: number; message: string; rateLimit?: GitHubRateLimit }
 
-    const data = (await response.json()) as { stargazers_count?: unknown }
-    if (typeof data.stargazers_count !== 'number') {
-      throw new Error(`Invalid stargazers_count for ${owner}/${repo}`)
-    }
+function parseRateLimit(headers: Headers): GitHubRateLimit {
+  const limit = Number(headers.get('x-ratelimit-limit') ?? '')
+  const remaining = Number(headers.get('x-ratelimit-remaining') ?? '')
+  const reset = Number(headers.get('x-ratelimit-reset') ?? '')
 
-    return data.stargazers_count
+  return {
+    limit: Number.isNaN(limit) ? undefined : limit,
+    remaining: Number.isNaN(remaining) ? undefined : remaining,
+    reset: Number.isNaN(reset) ? undefined : reset,
   }
+}
+
+function normalizeRepoParts(owner: string, repo: string): { owner: string; repo: string } | null {
+  const normalizedOwner = owner?.trim()
+  const normalizedRepo = repo?.trim()
+
+  if (!normalizedOwner || !normalizedRepo) {
+    return null
+  }
+
+  return { owner: normalizedOwner, repo: normalizedRepo }
+}
+
+export async function fetchRepositoryStars(owner: string, repo: string): Promise<GitHubStarsResult> {
+  const normalized = normalizeRepoParts(owner, repo)
+  if (!normalized) {
+    return { ok: false, status: 400, message: 'Owner and repo are required' }
+  }
+
+  if (octokit) {
+    try {
+      const { data } = await octokit.repos.get({
+        owner: normalized.owner,
+        repo: normalized.repo,
+      })
+
+      if (typeof data.stargazers_count !== 'number') {
+        return { ok: false, status: 502, message: 'Invalid stargazers_count from GitHub' }
+      }
+
+      return { ok: true, stars: data.stargazers_count, source: 'octokit' }
+    } catch (error) {
+      const status = typeof (error as { status?: unknown })?.status === 'number'
+        ? (error as { status: number }).status
+        : 500
+
+      const message = typeof (error as { message?: unknown })?.message === 'string'
+        ? (error as { message: string }).message
+        : 'GitHub API request failed'
+
+      if (status === 401 || status === 403 || status === 404) {
+        // Fall through to REST API for public repo access or clearer errors.
+      } else if (status >= 500) {
+        // Fall through to REST API as a recovery path.
+      } else {
+        return { ok: false, status, message }
+      }
+    }
+  }
+
+  const response = await fetch(`https://api.github.com/repos/${normalized.owner}/${normalized.repo}`, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      ...(hasToken ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    let message = `GitHub API failed with status ${response.status}`
+    try {
+      const data = (await response.json()) as { message?: unknown }
+      if (typeof data.message === 'string' && data.message.length > 0) {
+        message = data.message
+      }
+    } catch {
+      // Ignore JSON parse errors; fall back to generic message.
+    }
+
+    return {
+      ok: false,
+      status: response.status,
+      message,
+      rateLimit: parseRateLimit(response.headers),
+    }
+  }
+
+  const data = (await response.json()) as { stargazers_count?: unknown }
+  if (typeof data.stargazers_count !== 'number') {
+    return { ok: false, status: 502, message: 'Invalid stargazers_count from GitHub' }
+  }
+
+  return { ok: true, stars: data.stargazers_count, source: 'rest' }
 }
 
 // Fallback data in case API fails
