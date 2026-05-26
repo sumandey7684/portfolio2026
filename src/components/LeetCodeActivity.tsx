@@ -260,7 +260,7 @@ export default function LeetCodeActivity({ username = 'suman_dey' }: LeetCodeAct
             fontSize={10}
             showWeekdayLabels={false}
             showTotalCount={false}
-            hideColorLegend
+            renderColorLegend={() => null}
           />
         </div>
 
